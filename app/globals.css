@@ -173,7 +173,7 @@ h2 {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 18px;
 }
@@ -701,4 +701,74 @@ textarea {
 .product-card:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+
+/* Keep grids and long customer/product names inside the viewport. */
+.topbar { gap: 16px; }
+.brand-mark { flex-shrink: 0; }
+.nav-link { text-align: right; }
+.panel, .field, .step-grid > *, .admin-grid > *, .cart-line > *,
+.order-summary > *, .discount-row > * { min-width: 0; }
+input, select, textarea { min-width: 0; font-size: 16px; }
+textarea { resize: vertical; min-height: 96px; }
+input[type="file"] { max-width: 100%; }
+.btn, .tabs button, .text-button, .cart-line button { min-height: 44px; }
+.product-card, .cart-line, .catalog-row, .discount-row, .order-summary,
+.notice, td { overflow-wrap: anywhere; }
+.image-strip { max-width: 100%; overscroll-behavior-x: contain; }
+.image-strip img, .image-item { flex-shrink: 0; }
+.admin-shell .container, .admin-shell .topbar { max-width: 1440px; }
+.admin-grid { grid-template-columns: 240px minmax(0, 1fr); }
+.admin-grid > aside { position: sticky; top: 20px; }
+.table-wrap { max-width: 100%; }
+@media (min-width: 1200px) {
+  .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .admin-content .step-grid { grid-template-columns: minmax(0, 1fr) 300px; }
+  .admin-content .sticky { position: sticky; top: 20px; }
+}
+@media (max-width: 1050px) {
+  .admin-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-grid > aside { position: static; }
+  .admin-grid > aside .admin-title { font-size: 24px; }
+  .admin-grid > aside .account-email { margin: 8px 0 16px; }
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 3px 3px 10px;
+    scroll-snap-type: x proximity; }
+  .tabs button { flex: 0 0 auto; scroll-snap-align: start; }
+  .admin-grid > aside .actions { margin-top: 8px; }
+}
+@media (max-width: 700px) {
+  .orders-table, .orders-table tbody { display: block; min-width: 0; }
+  .orders-table thead { position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+  .orders-table tbody { display: grid; gap: 14px; }
+  .orders-table tbody tr { display: block; border: 1px solid var(--line);
+    border-radius: 14px; padding: 8px 14px; background: var(--panel-2); }
+  .orders-table td { display: grid; grid-template-columns: 95px minmax(0, 1fr);
+    align-items: start; gap: 4px 12px; padding: 12px 0; }
+  .orders-table td::before { content: attr(data-label); color: var(--muted);
+    font-size: 11px; font-weight: 700; padding-top: 2px; }
+  .orders-table td > .table-small { grid-column: 2; }
+  .orders-table td .badge { justify-self: start; }
+  .orders-table td:last-child { border: 0; }
+  .orders-table td:last-child .btn { width: 100%; }
+}
+@media (max-width: 560px) {
+  .topbar { align-items: center; }
+  .container { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
+  .panel { padding: 16px; }
+  .section-heading { align-items: stretch; gap: 10px; }
+  .section-heading > .btn { flex: 1 0 100%; }
+  .actions > .btn { flex: 1 1 160px; }
+  .order-summary { flex-wrap: wrap; }
+  .order-summary > span:first-child { flex: 1 1 180px; }
+  .discount-row { flex-wrap: wrap; }
+  .discount-row > div { flex: 1 1 160px; }
+  .product-thumb { height: 200px; }
+  .cart-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .stats-grid .stat strong { font-size: clamp(23px, 6vw, 34px); }
+  .login-panel { margin: 12px auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .product-card { transition: none; }
 }

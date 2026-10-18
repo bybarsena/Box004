@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function AdminPage() {
   return (
-    <main className="shell">
+    <main className="shell admin-shell">
       <header className="topbar">
         <Brand />
         <Link className="nav-link" href="/">

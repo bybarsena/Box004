@@ -343,6 +343,7 @@ export function AdminDashboard() {
             <button
               key={id}
               className={tab === id ? "active" : ""}
+              aria-current={tab === id ? "page" : undefined}
               onClick={() => {
                 setTab(id);
                 setEditing(undefined);
@@ -509,7 +510,7 @@ export function AdminDashboard() {
                   />
                 )}
                 <div className="table-wrap">
-                  <table>
+                  <table className="orders-table" role="table">
                     <thead>
                       <tr>
                         <th>Pedido</th>
@@ -522,7 +523,7 @@ export function AdminDashboard() {
                     <tbody>
                       {filtered.map((o) => (
                         <tr key={o.id}>
-                          <td>
+                          <td data-label="Pedido" role="cell">
                             {number(o.sequence)}
                             <small className="table-small">
                               {new Date(o.created_at).toLocaleDateString(
@@ -530,24 +531,24 @@ export function AdminDashboard() {
                               )}
                             </small>
                           </td>
-                          <td>
+                          <td data-label="Cliente" role="cell">
                             {o.first_name} {o.last_name}
                             <small className="table-small">
                               {o.phone || o.email}
                             </small>
                           </td>
-                          <td>
+                          <td data-label="Estado" role="cell">
                             <span className={`badge status-${o.status}`}>
                               {statuses[o.status]}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Total / pagado" role="cell">
                             {money(o.total_cents)}
                             <small className="table-small">
                               {money(o.paid_cents)} pagado
                             </small>
                           </td>
-                          <td>
+                          <td data-label="Detalle" role="cell">
                             <button
                               className="btn secondary"
                               onClick={() => setSelected(o.id)}
