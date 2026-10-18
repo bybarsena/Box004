@@ -15,6 +15,9 @@ export function ProductEditor({
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [color, setColor] = useState("");
+  const colors = [...new Set(product?.product_variants.map((v) => v.color) || [])];
+  const photoColor = colors.includes(color) ? color : colors[0] || "";
+  const colorPhotos = product?.product_color_images.filter((i) => i.color.trim().toLowerCase() === photoColor.trim().toLowerCase()) || [];
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setMessage("");
@@ -96,19 +99,19 @@ export function ProductEditor({
     });
   }
   async function addRecovered(image: string) {
-    if (!product || !color.trim()) throw new Error("Indica primero el color.");
+    if (!product || !photoColor) throw new Error("Indica primero el color.");
     const { error } = await getSupabase()
       .from("product_color_images")
       .insert({
         product_id: product.id,
-        color: color.trim(),
+        color: photoColor,
         image_url: "/images/" + image,
       });
     if (error) throw error;
   }
   async function upload(file: File) {
     if (!product) return;
-    if (!color.trim())
+    if (!photoColor)
       throw new Error("Indica el color antes de subir la imagen.");
     if (
       !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
@@ -126,7 +129,7 @@ export function ProductEditor({
       .from("product_color_images")
       .insert({
         product_id: product.id,
-        color: color.trim(),
+        color: photoColor,
         image_url: data.publicUrl,
       });
     if (ie) throw ie;
@@ -219,6 +222,7 @@ export function ProductEditor({
               </label>
             ))}
           </div>
+          <p className="muted">Añade tallas y colores separados por comas. Se crearán todas sus combinaciones; desmarca las que no estén disponibles.</p>
           <form onSubmit={variants}>
             <div className="form-grid">
               <label className="field">
@@ -257,8 +261,16 @@ export function ProductEditor({
           </form>
           <hr className="divider" />
           <h3>Fotos por color</h3>
+          <p className="muted">Elige un color de los que has creado y añade su foto. Al cambiar de color en el pedido, cambiarán las imágenes.</p>
+          <label className="field">
+            Color de las fotos
+            <select value={photoColor} disabled={!colors.length || busy} onChange={(e) => setColor(e.target.value)}>
+              {!colors.length && <option value="">Añade primero tallas y colores</option>}
+              {colors.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
           <div className="image-strip">
-            {product.product_color_images.map((i) => (
+            {colorPhotos.map((i) => (
               <div className="image-item" key={i.id}>
                 <img src={i.image_url} alt={i.color} />
                 <span>{i.color}</span>
@@ -282,20 +294,11 @@ export function ProductEditor({
           </div>
           <div className="form-grid">
             <label className="field">
-              Color exacto de la foto
-              <input
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                maxLength={80}
-                placeholder="Negro"
-              />
-            </label>
-            <label className="field">
               Subir foto (hasta 5 MB)
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                disabled={busy || !color.trim()}
+                disabled={busy || !photoColor}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = "";
@@ -307,7 +310,7 @@ export function ProductEditor({
           <details className="asset-gallery">
             <summary>Elegir entre las 12 imágenes recuperadas</summary>
             <p className="muted">
-              Indica arriba el color exacto y pulsa la foto que quieras añadir.
+              La imagen que pulses se asociará al color {photoColor || "que selecciones"}.
             </p>
             <div className="product-grid">
               {recoveredImages.map((image) => (
@@ -315,7 +318,7 @@ export function ProductEditor({
                   type="button"
                   className="product-card"
                   key={image}
-                  disabled={busy || !color.trim()}
+                  disabled={busy || !photoColor}
                   onClick={() => void run(() => addRecovered(image))}
                 >
                   <img

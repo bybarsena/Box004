@@ -15,7 +15,9 @@ export function OrderFlow({
     [loadError, setLoadError] = useState(""),
     [reload, setReload] = useState(0);
   const [productId, setProductId] = useState(""),
-    [variantId, setVariantId] = useState(""),
+    [selectedColor, setSelectedColor] = useState(""),
+    [selectedModel, setSelectedModel] = useState(""),
+    [selectedSize, setSelectedSize] = useState(""),
     [quantity, setQuantity] = useState(1),
     [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false),
@@ -62,10 +64,13 @@ export function OrderFlow({
   }, [reload]);
   const product = products.find((p) => p.id === productId),
     variants = product?.product_variants.filter((v) => v.active) || [],
-    variant = variants.find((v) => v.id === variantId);
+    variant = variants.find((v) => v.color === selectedColor && v.model === selectedModel && v.size === selectedSize);
+  const colors = [...new Set(variants.map((v) => v.color))];
+  const models = [...new Set(variants.filter((v) => v.color === selectedColor).map((v) => v.model))];
+  const sizes = [...new Set(variants.filter((v) => v.color === selectedColor && v.model === selectedModel).map((v) => v.size))];
   const photos =
     product?.product_color_images.filter(
-      (p) => !variant || p.color.toLowerCase() === variant.color.toLowerCase(),
+      (p) => p.color.trim().toLowerCase() === selectedColor.trim().toLowerCase(),
     ) || [];
   const subtotal = lines.reduce((s, l) => s + l.price * l.quantity, 0),
     total = subtotal - Math.floor((subtotal * (discount?.percent || 0)) / 100);
@@ -219,13 +224,16 @@ export function OrderFlow({
                   aria-pressed={p.id === productId}
                   onClick={() => {
                     setProductId(p.id);
-                    setVariantId("");
+                    const first = p.product_variants.find((v) => v.active);
+                    setSelectedColor(first?.color || "");
+                    setSelectedModel(first?.model || "");
+                    setSelectedSize("");
                   }}
                 >
-                  {p.product_color_images[0] && (
+                  {(p.id === productId ? photos[0] : p.product_color_images[0]) && (
                     <img
                       className="product-thumb"
-                      src={p.product_color_images[0].image_url}
+                      src={(p.id === productId ? photos[0] : p.product_color_images[0]).image_url}
                       alt={p.name}
                     />
                   )}
@@ -239,17 +247,32 @@ export function OrderFlow({
               <>
                 <div className="form-grid">
                   <label className="field">
-                    Modelo · talla · color
-                    <select
-                      value={variantId}
-                      onChange={(e) => setVariantId(e.target.value)}
-                    >
-                      <option value="">Selecciona una combinación</option>
-                      {variants.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.model} · {v.size} · {v.color}
-                        </option>
-                      ))}
+                    Color
+                    <select value={selectedColor} onChange={(e) => {
+                      const next = e.target.value;
+                      setSelectedColor(next);
+                      setSelectedModel(variants.find((v) => v.color === next)?.model || "");
+                      setSelectedSize("");
+                    }}>
+                      <option value="" disabled>Selecciona un color</option>
+                      {colors.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Modelo
+                    <select value={selectedModel} disabled={!selectedColor} onChange={(e) => {
+                      setSelectedModel(e.target.value);
+                      setSelectedSize("");
+                    }}>
+                      <option value="" disabled>Selecciona un modelo</option>
+                      {models.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Talla
+                    <select value={selectedSize} disabled={!selectedModel} onChange={(e) => setSelectedSize(e.target.value)}>
+                      <option value="" disabled>Selecciona tu talla</option>
+                      {sizes.map((size) => <option key={size} value={size}>{size}</option>)}
                     </select>
                   </label>
                   <label className="field">
@@ -270,7 +293,7 @@ export function OrderFlow({
                     />
                   </label>
                 </div>
-                <div className="image-strip">
+                <div className="image-strip" aria-live="polite" aria-label={`Fotos en color ${selectedColor}`}>
                   {photos.map((p) => (
                     <a
                       key={p.id}
@@ -285,6 +308,7 @@ export function OrderFlow({
                     </a>
                   ))}
                 </div>
+                {selectedColor && !photos.length && <p className="muted" role="status">Todavía no hay foto para el color {selectedColor}.</p>}
                 <button
                   type="button"
                   className="btn"
