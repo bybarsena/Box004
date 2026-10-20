@@ -236,10 +236,10 @@ export function OrderFlow({
                     setSelectedSize("");
                   }}
                 >
-                  {(p.id === productId ? photos[0] : p.product_color_images[0]) && (
+                  {(p.id === productId ? photos[0] : (p.product_color_images.find((image) => image.color === "Portada") || p.product_color_images[0])) && (
                     <img
                       className="product-thumb"
-                      src={(p.id === productId ? photos[0] : p.product_color_images[0]).image_url}
+                      src={(p.id === productId ? photos[0] : (p.product_color_images.find((image) => image.color === "Portada") || p.product_color_images[0])).image_url}
                       alt={p.name}
                     />
                   )}
