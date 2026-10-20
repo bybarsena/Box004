@@ -767,6 +767,7 @@ function OrderDetail({
         </strong>{" "}
         · {order.email || "Sin email"} · {order.phone || "Sin teléfono"}
       </p>
+      <CustomerContact order={order} />
       <p className="muted">
         {new Date(order.created_at).toLocaleString("es-ES")} ·{" "}
         {order.source === "manual" ? "Registro manual" : "Pedido desde la web"}
@@ -827,5 +828,48 @@ function OrderDetail({
         {message && <p role="status">{message}</p>}
       </form>
     </article>
+  );
+}
+
+function CustomerContact({ order }: { order: Order }) {
+  const rawPhone = (order.phone || "").trim();
+  const digits = rawPhone.replace(/\D/g, "");
+  const internationalPhone = rawPhone.startsWith("+")
+    ? digits
+    : rawPhone.startsWith("00")
+      ? digits.slice(2)
+      : /^[6789]\d{8}$/.test(digits)
+        ? `34${digits}`
+        : "";
+  const whatsappPhone = /^[1-9]\d{7,14}$/.test(internationalPhone) ? internationalPhone : "";
+  const email = (order.email || "").trim();
+  const message = `Hola ${order.first_name}, te contactamos de Box 004 Santiago sobre tu pedido ${number(order.sequence)}.`;
+  const subject = `Box 004 Santiago · Pedido ${number(order.sequence)}`;
+  return (
+    <div>
+      <h4>Contactar con el cliente</h4>
+      <div className="actions" role="group" aria-label="Contactar con el cliente">
+        {whatsappPhone && (
+          <a className="btn" href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer">
+            WhatsApp
+          </a>
+        )}
+        {digits && (
+          <a className="btn secondary" href={`tel:${internationalPhone ? "+" + internationalPhone : digits}`}>
+            Llamar
+          </a>
+        )}
+        {email && (
+          <a className="btn secondary" href={`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`}>
+            Enviar correo
+          </a>
+        )}
+      </div>
+      {!digits && !email ? (
+        <p className="muted">Este pedido no tiene teléfono ni correo de contacto.</p>
+      ) : (
+        <p className="muted">WhatsApp y correo abren un mensaje con la referencia del pedido para que lo revises y envíes.</p>
+      )}
+    </div>
   );
 }
