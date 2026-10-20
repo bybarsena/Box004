@@ -772,3 +772,24 @@ input[type="file"] { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .product-card { transition: none; }
 }
+
+/* Keep each garment's choices beside the garment, on every screen size. */
+.product-grid { align-items: start; }
+.product-toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.product-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+.product-action { display: block; margin-top: 12px; font-size: 14px; font-weight: 700; color: var(--accent); }
+.product-options { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.product-options .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.product-options .btn { width: 100%; }
+@media (max-width: 420px) {
+  .product-options .form-grid { grid-template-columns: 1fr; }
+}
