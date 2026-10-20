@@ -217,13 +217,19 @@ export function OrderFlow({
           <>
             <div className="product-grid">
               {products.map((p) => (
+                <article key={p.id} className={`product-card ${p.id === productId ? "selected" : ""}`}>
                 <button
                   type="button"
-                  key={p.id}
-                  className={`product-card ${p.id === productId ? "selected" : ""}`}
-                  aria-pressed={p.id === productId}
+                  className="product-toggle"
+                  aria-expanded={p.id === productId}
+                  aria-controls={`options-${p.id}`}
                   onClick={() => {
+                    if (p.id === productId) {
+                      setProductId("");
+                      return;
+                    }
                     setProductId(p.id);
+                    setQuantity(1);
                     const first = p.product_variants.find((v) => v.active);
                     setSelectedColor(first?.color || "");
                     setSelectedModel(first?.model || "");
@@ -240,11 +246,10 @@ export function OrderFlow({
                   <strong>{p.name}</strong>
                   <p>{p.description}</p>
                   <span className="price">{money(p.price_cents)}</span>
+                  <span className="product-action">{p.id === productId ? "Cerrar opciones −" : "Elegir talla y color +"}</span>
                 </button>
-              ))}
-            </div>
-            {product && (
-              <>
+            {p.id === productId && product && (
+              <div id={`options-${p.id}`} className="product-options" role="region" aria-label={`Configurar ${p.name}`}>
                 <div className="form-grid">
                   <label className="field">
                     Color
@@ -317,8 +322,11 @@ export function OrderFlow({
                 >
                   Añadir al pedido
                 </button>
-              </>
+              </div>
             )}
+                </article>
+              ))}
+            </div>
           </>
         )}
         <hr className="divider" />
