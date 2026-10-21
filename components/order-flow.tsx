@@ -30,6 +30,7 @@ export function OrderFlow({
     [discount, setDiscount] = useState<{
       code: string;
       percent: number;
+      eligibleProductIds?: string[] | null;
     } | null>(null);
   const retry = useRef<{ body: string; id: string } | null>(null);
   useEffect(() => {
@@ -73,7 +74,11 @@ export function OrderFlow({
       (p) => p.color.trim().toLowerCase() === selectedColor.trim().toLowerCase(),
     ) || [];
   const subtotal = lines.reduce((s, l) => s + l.price * l.quantity, 0),
-    total = subtotal - Math.floor((subtotal * (discount?.percent || 0)) / 100);
+    eligibleSubtotal = lines.reduce((s, l) =>
+      !discount?.eligibleProductIds || discount.eligibleProductIds.includes(l.v.product_id)
+        ? s + l.price * l.quantity : s, 0),
+    reduction = Math.floor((eligibleSubtotal * (discount?.percent || 0)) / 100),
+    total = subtotal - reduction;
   function add() {
     if (!variant || !product) return;
     const previous = lines.find((l) => l.v.id === variant.id);
@@ -433,7 +438,15 @@ export function OrderFlow({
           </button>
         </div>
         {discount && (
-          <p className="notice success">{discount.percent}% aplicado</p>
+          <p className="notice success" role="status">
+            {discount.eligibleProductIds
+              ? `${discount.percent}% solo en camisetas. Las sudaderas quedan excluidas.`
+              : `${discount.percent}% aplicado`}
+            {discount.eligibleProductIds && eligibleSubtotal === 0 && " Añade una camiseta para aprovecharlo."}
+          </p>
+        )}
+        {discount && reduction > 0 && (
+          <p>Descuento: −{money(reduction)}</p>
         )}
         <div className="total">
           <span>Total</span>

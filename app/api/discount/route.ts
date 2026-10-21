@@ -9,7 +9,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Código no válido." }, { status: 400 });
     const { data, error } = await serverDb()
       .from("discounts")
-      .select("code,percent,expires_at")
+      .select("code,percent,expires_at,eligible_product_ids")
       .eq("code", code.trim().toUpperCase())
       .eq("active", true)
       .maybeSingle();
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     return Response.json(
-      { code: data.code, percent: data.percent },
+      { code: data.code, percent: data.percent, eligibleProductIds: data.eligible_product_ids },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {
