@@ -793,3 +793,16 @@ input[type="file"] { max-width: 100%; }
 @media (max-width: 420px) {
   .product-options .form-grid { grid-template-columns: 1fr; }
 }
+
+/* Show the original Athlete photographs by garment without changing their pixels. */
+img[src$="#athlete-oversize-blanco"],
+img[src$="#athlete-oversize-negro"],
+img[src$="#athlete-crop-blanco"],
+img[src$="#athlete-crop-negro"] {
+  height: auto;
+  object-fit: cover;
+}
+img[src$="#athlete-oversize-blanco"] { aspect-ratio: 1394 / 900; object-position: top; }
+img[src$="#athlete-oversize-negro"] { aspect-ratio: 1301 / 900; object-position: top; }
+img[src$="#athlete-crop-blanco"] { aspect-ratio: 1394 / 636; object-position: bottom; }
+img[src$="#athlete-crop-negro"] { aspect-ratio: 1301 / 636; object-position: bottom; }
