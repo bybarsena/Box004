@@ -440,9 +440,9 @@ export function OrderFlow({
         {discount && (
           <p className="notice success" role="status">
             {discount.eligibleProductIds
-              ? `${discount.percent}% solo en camisetas. Las sudaderas quedan excluidas.`
+              ? `${discount.percent}% en las prendas seleccionadas para este código.`
               : `${discount.percent}% aplicado`}
-            {discount.eligibleProductIds && eligibleSubtotal === 0 && " Añade una camiseta para aprovecharlo."}
+            {discount.eligibleProductIds && eligibleSubtotal === 0 && " No hay prendas incluidas en tu pedido."}
           </p>
         )}
         {discount && reduction > 0 && (

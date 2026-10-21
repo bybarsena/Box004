@@ -793,3 +793,14 @@ input[type="file"] { max-width: 100%; }
 @media (max-width: 420px) {
   .product-options .form-grid { grid-template-columns: 1fr; }
 }
+
+.discount-editor-fields{border:0;padding:0;margin:0;min-width:0}
+.discount-scope{margin:20px 0;padding:18px;border:1px solid #ccd3ce;border-radius:14px;min-width:0}
+.discount-scope legend{font-weight:700;padding:0 6px}
+.discount-choice{display:flex;align-items:center;gap:10px;margin:12px 0;cursor:pointer}
+.discount-choice input,.discount-product input{width:20px;height:20px;flex:0 0 20px;accent-color:#398c53}
+.discount-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;margin:14px 0}
+.discount-product{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #ccd3ce;border-radius:12px;cursor:pointer}
+.discount-product.selected{border-color:#398c53;background:#edf6ef;color:#17251b}
+.discount-product small{display:block;margin-top:5px}
+.discount-row{flex-wrap:wrap}

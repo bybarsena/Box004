@@ -50,6 +50,7 @@ export type Order = {
   order_items: Item[];
 };
 export type Discount = {
+  eligible_product_ids: string[] | null;
   code: string;
   percent: number;
   active: boolean;

@@ -13,6 +13,7 @@ import {
 import { csvText } from "@/lib/csv";
 import { ProductEditor } from "./product-editor";
 import { OrderFlow } from "./order-flow";
+import { DiscountEditor } from "./discount-editor";
 type Tab = "summary" | "orders" | "manual" | "products" | "discounts";
 export function AdminDashboard() {
   const [session, setSession] = useState<Session | null>(null),
@@ -29,6 +30,7 @@ export function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]),
     [products, setProducts] = useState<Product[]>([]),
     [discounts, setDiscounts] = useState<Discount[]>([]),
+    [editingDiscount, setEditingDiscount] = useState<Discount | null>(null),
     [tab, setTab] = useState<Tab>("summary"),
     [editing, setEditing] = useState<string | null | undefined>(),
     [selected, setSelected] = useState<string | null>(null),
@@ -625,57 +627,17 @@ export function AdminDashboard() {
             {tab === "discounts" && (
               <section className="panel">
                 <h2>Códigos de descuento</h2>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const form = e.currentTarget,
-                      f = new FormData(form);
-                    void run(async () => {
-                      const date = String(f.get("expires") || "");
-                      const { error } = await getSupabase()
-                        .from("discounts")
-                        .upsert({
-                          code: String(f.get("code")).trim().toUpperCase(),
-                          percent: Number(f.get("percent")),
-                          active: true,
-                          expires_at: date
-                            ? new Date(`${date}T23:59:59`).toISOString()
-                            : null,
-                        });
-                      if (error) throw error;
-                      form.reset();
-                      await load();
-                      setSuccess("Descuento guardado.");
-                    });
+                <DiscountEditor
+                  key={editingDiscount?.code || "new"}
+                  discount={editingDiscount}
+                  products={products}
+                  onCancel={() => setEditingDiscount(null)}
+                  onSaved={async () => {
+                    setEditingDiscount(null);
+                    await load();
+                    setSuccess("Descuento guardado. Se aplicará a los nuevos pedidos.");
                   }}
-                >
-                  <div className="form-grid">
-                    <label className="field">
-                      Código
-                      <input name="code" required maxLength={40} />
-                    </label>
-                    <label className="field">
-                      Descuento (%)
-                      <input
-                        name="percent"
-                        required
-                        type="number"
-                        min="1"
-                        max="100"
-                        defaultValue="10"
-                      />
-                    </label>
-                    <label className="field">
-                      Caducidad opcional
-                      <input name="expires" type="date" />
-                    </label>
-                  </div>
-                  <div className="actions">
-                    <button className="btn" disabled={busy}>
-                      Guardar código
-                    </button>
-                  </div>
-                </form>
+                />
                 <hr className="divider" />
                 {discounts.map((d) => (
                   <div className="discount-row" key={d.code}>
@@ -689,7 +651,16 @@ export function AdminDashboard() {
                           : "Sin caducidad"}{" "}
                         · {d.active ? "Activo" : "Inactivo"}
                       </small>
+                      <small className="table-small">
+                        {d.eligible_product_ids === null ? "Todo el catálogo" : d.eligible_product_ids.map((id) => products.find((p) => p.id === id)?.name || "Prenda eliminada").join(" · ") || "Ninguna prenda"}
+                      </small>
                     </div>
+                    <button
+                      className="btn secondary"
+                      onClick={() => setEditingDiscount(d)}
+                    >
+                      Editar prendas y descuento
+                    </button>
                     <button
                       className="btn secondary"
                       disabled={busy}
