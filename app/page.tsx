@@ -1,15 +1,11 @@
 import { Brand } from "@/components/brand";
 import { OrderFlow } from "@/components/order-flow";
-import Link from "next/link";
 
 export default function Home() {
   return (
     <main className="shell">
       <header className="topbar">
         <Brand />
-        <Link className="nav-link" href="/admin">
-          Administración →
-        </Link>
       </header>
       <div className="container">
         <section className="hero">
