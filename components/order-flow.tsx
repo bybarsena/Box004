@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { CatalogImage } from "./catalog-image";
 import { Brand } from "./brand";
 import { getSupabase, configured, errorMessage } from "@/lib/supabase";
 import { money, type Product, type Variant } from "@/lib/types";
@@ -449,7 +450,19 @@ export function OrderFlow({
             ) : (
               lines.map((l) => (
                 <div className="cart-line" key={l.v.id}>
-                  {l.image && <img src={l.image} alt="" />}
+                  {l.image && (
+                    <CatalogImage
+                      src={l.image}
+                      alt=""
+                      fallback={
+                        products.find((p) => p.id === l.v.product_id)
+                          ? productImage(
+                              products.find((p) => p.id === l.v.product_id)!,
+                            )
+                          : undefined
+                      }
+                    />
+                  )}
                   <div>
                     <strong>{l.name}</strong>
                     <small>
@@ -713,7 +726,8 @@ export function OrderFlow({
             </button>
             <div className="product-gallery">
               {productImage(product, color) && (
-                <img
+                <CatalogImage
+                  fallback={productImage(product)}
                   src={productImage(product, color)}
                   alt={`${product.name}, ${color}`}
                 />
@@ -732,7 +746,8 @@ export function OrderFlow({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      <img
+                      <CatalogImage
+                        fallback={productImage(product)}
                         src={i.image_url}
                         alt={`${product.name}, ${color}, ver foto`}
                       />

@@ -17,6 +17,7 @@ import {
   type Discount,
 } from "@/lib/types";
 import { csvText } from "@/lib/csv";
+import { CatalogImage } from "./catalog-image";
 import { OrderDetail, CustomerContact } from "./order-detail";
 import { ProductEditor } from "./product-editor";
 import { productImage } from "@/lib/catalog";
@@ -655,7 +656,11 @@ export function AdminDashboard() {
                           return (
                             <div className="order-card-item" key={i.id}>
                               {image ? (
-                                <img src={image} alt="" />
+                                <CatalogImage
+                                  src={image}
+                                  alt=""
+                                  fallback={p ? productImage(p) : undefined}
+                                />
                               ) : (
                                 <span className="item-placeholder">004</span>
                               )}
