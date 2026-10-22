@@ -1,11 +1,16 @@
 import type { Product } from "./types";
-export type Category = "Todas" | "Camisetas" | "Crop tops" | "Sudaderas";
-export const categories: Category[] = [
-  "Todas",
-  "Camisetas",
-  "Crop tops",
-  "Sudaderas",
-];
+export type Category = string;
+export function catalogCategories(products: Product[]): Category[] {
+  return [
+    "Todas",
+    ...new Set(
+      products
+        .map(categoryOf)
+        .filter(Boolean)
+        .toSorted((a, b) => a.localeCompare(b, "es")),
+    ),
+  ];
+}
 export function categoryOf(value: string | Product): Category {
   if (typeof value !== "string" && value.category) return value.category;
   const name = typeof value === "string" ? value : value.name;

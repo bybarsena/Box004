@@ -5,7 +5,7 @@ import { Brand } from "./brand";
 import { getSupabase, configured, errorMessage } from "@/lib/supabase";
 import { money, type Product, type Variant } from "@/lib/types";
 import {
-  categories,
+  catalogCategories,
   categoryOf,
   productImage,
   swatch,
@@ -348,7 +348,7 @@ export function OrderFlow({
               role="group"
               aria-label="Filtrar prendas"
             >
-              {categories.map((c) => (
+              {catalogCategories(products).map((c) => (
                 <button
                   key={c}
                   type="button"

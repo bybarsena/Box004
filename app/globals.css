@@ -2263,3 +2263,61 @@ p {
     padding: 16px;
   }
 }
+.type-form {
+  padding: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.type-form > .field {
+  flex: 1;
+  margin: 0;
+}
+.type-list {
+  display: grid;
+  gap: 12px;
+}
+.type-card {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.type-card h3,
+.type-card p {
+  margin: 0;
+}
+.type-card p {
+  margin-top: 6px;
+}
+.inline-type {
+  padding: 16px;
+  background: #efefe8;
+  border-radius: 10px;
+}
+.inline-type label {
+  display: grid;
+  gap: 8px;
+}
+.inline-type input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d4d6cc;
+  border-radius: 8px;
+  font: inherit;
+}
+.inline-type .btn {
+  margin-top: 10px;
+}
+@media (max-width: 600px) {
+  .type-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .type-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -15,17 +15,19 @@ import {
   type Product,
   type Order,
   type Discount,
+  type ProductType,
 } from "@/lib/types";
 import { ProductionExport } from "./production-export";
 import { csvText } from "@/lib/csv";
 import { CatalogImage } from "./catalog-image";
 import { OrderDetail, CustomerContact } from "./order-detail";
+import { ProductTypes } from "./product-types";
 import { ProductEditor } from "./product-editor";
 import { productImage } from "@/lib/catalog";
 import { isArchived, outstanding, stageLabel } from "@/lib/order-workflow";
 import { OrderFlow } from "./order-flow";
 import { DiscountEditor } from "./discount-editor";
-type Tab = "orders" | "archive" | "manual" | "products" | "discounts";
+type Tab = "orders" | "archive" | "manual" | "products" | "discounts" | "types";
 export function AdminDashboard() {
   const [session, setSession] = useState<Session | null>(null),
     [initializing, setInitializing] = useState(configured),
@@ -41,6 +43,7 @@ export function AdminDashboard() {
     [reset, setReset] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]),
     [products, setProducts] = useState<Product[]>([]),
+    [productTypes, setProductTypes] = useState<ProductType[]>([]),
     [discounts, setDiscounts] = useState<Discount[]>([]),
     [editingDiscount, setEditingDiscount] = useState<Discount | null>(null),
     [tab, setTab] = useState<Tab>("orders"),
@@ -128,7 +131,7 @@ export function AdminDashboard() {
         }
         return result;
       }
-      const [o, p, d] = await Promise.all([
+      const [o, p, d, t] = await Promise.all([
         all<Order>("orders", "*,order_items(*)", "created_at"),
         all<Product>(
           "products",
@@ -136,10 +139,12 @@ export function AdminDashboard() {
           "created_at",
         ),
         all<Discount>("discounts", "*", "code"),
+        all<ProductType>("product_types", "*", "name"),
       ]);
       setOrders(o);
       setProducts(p);
       setDiscounts(d);
+      setProductTypes(t.toSorted((a, b) => a.name.localeCompare(b.name, "es")));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -402,6 +407,7 @@ export function AdminDashboard() {
               ["manual", "＋", "Nuevo pedido", null],
               ["products", "◇", "Prendas", products.length],
               ["discounts", "%", "Descuentos", discounts.length],
+              ["types", "▦", "Tipos de prenda", productTypes.length],
             ] as [Tab, string, string, number | null][]
           ).map(([id, icon, label, count]) => (
             <button
@@ -823,6 +829,8 @@ export function AdminDashboard() {
                 <ProductEditor
                   key={editing || "new"}
                   product={products.find((p) => p.id === editing) || null}
+                  productTypes={productTypes}
+                  onTypesChanged={() => void load()}
                   onClose={() => setEditing(undefined)}
                   onSaved={() => void load()}
                 />
@@ -926,6 +934,13 @@ export function AdminDashboard() {
                   </div>
                 </>
               ))}
+            {tab === "types" && (
+              <ProductTypes
+                types={productTypes}
+                products={products}
+                onChanged={() => void load()}
+              />
+            )}
             {tab === "discounts" && (
               <>
                 <div className="section-heading admin-page-heading">

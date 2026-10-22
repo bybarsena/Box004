@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getSupabase, errorMessage } from "@/lib/supabase";
-import { money, type Product } from "@/lib/types";
+import { money, type Product, type ProductType } from "@/lib/types";
 import { swatch, categoryOf } from "@/lib/catalog";
 type Row = { model: string; size: string; color: string; active: boolean };
 type Photo = { color: string; image_url: string; file?: File };
@@ -9,12 +9,54 @@ export function ProductEditor({
   product,
   onClose,
   onSaved,
+  productTypes,
+  onTypesChanged,
 }: {
   product: Product | null;
+  productTypes: ProductType[];
+  onTypesChanged: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [category, setCategory] = useState(categoryOf(product || ""));
+  const [customType, setCustomType] = useState(false),
+    [typeName, setTypeName] = useState(""),
+    [savingType, setSavingType] = useState(false),
+    [typeMessage, setTypeMessage] = useState("");
+  const typeNames = [
+    ...new Set([...productTypes.map((t) => t.name), category]),
+  ].sort((a, b) => a.localeCompare(b, "es"));
+  async function createType() {
+    const name = typeName.trim();
+    if (name.length < 2 || name.length > 50 || name.toLowerCase() === "todas") {
+      setTypeMessage(
+        "Usa entre 2 y 50 caracteres y un nombre distinto de «Todas».",
+      );
+      return;
+    }
+    setSavingType(true);
+    setTypeMessage("");
+    try {
+      const { error } = await getSupabase()
+        .from("product_types")
+        .insert({ name })
+        .select("id")
+        .single();
+      if (error) throw error;
+      setCategory(name);
+      setTypeName("");
+      setCustomType(false);
+      onTypesChanged();
+    } catch (e) {
+      setTypeMessage(
+        typeof e === "object" && e && "code" in e && e.code === "23505"
+          ? "Ese tipo ya existe. Selecciónalo en la lista."
+          : errorMessage(e),
+      );
+    } finally {
+      setSavingType(false);
+    }
+  }
   const [id] = useState(() => product?.id || crypto.randomUUID()),
     [name, setName] = useState(product?.name || ""),
     [price, setPrice] = useState(
@@ -105,6 +147,7 @@ export function ProductEditor({
   }
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy || savingType) return;
     setMessage("");
     if (active && !rows.some((r) => r.active)) {
       setMessage(
@@ -181,7 +224,7 @@ export function ProductEditor({
         </button>
       </div>
       <form onSubmit={save}>
-        <fieldset disabled={busy} className="plain-fieldset">
+        <fieldset disabled={busy || savingType} className="plain-fieldset">
           <div className="editor-layout">
             <div className="stack">
               <section className="panel">
@@ -220,11 +263,47 @@ export function ProductEditor({
                         setCategory(e.target.value as typeof category)
                       }
                     >
-                      <option>Camisetas</option>
-                      <option>Crop tops</option>
-                      <option>Sudaderas</option>
+                      {typeNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
                     </select>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setCustomType((v) => !v)}
+                    >
+                      ＋ Crear tipo de prenda
+                    </button>
                   </label>
+                  {customType && (
+                    <div className="field full inline-type">
+                      <label>
+                        Nombre del nuevo tipo
+                        <input
+                          minLength={2}
+                          maxLength={50}
+                          value={typeName}
+                          onChange={(e) => setTypeName(e.target.value)}
+                          placeholder="Ej.: Pantalones"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={savingType || !typeName.trim()}
+                        onClick={() => void createType()}
+                      >
+                        {savingType ? "Creando…" : "Crear y seleccionar"}
+                      </button>
+                      {typeMessage && (
+                        <p className="notice error" role="alert">
+                          {typeMessage}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <label className="field full">
                     Descripción opcional
                     <textarea

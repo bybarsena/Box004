@@ -15,6 +15,12 @@ await db.exec(
     "utf8",
   ),
 );
+await db.exec(
+  await readFile(
+    new URL("../database/product-types.sql", import.meta.url),
+    "utf8",
+  ),
+);
 const admin = randomUUID(),
   other = randomUUID(),
   product = randomUUID(),
@@ -273,7 +279,93 @@ assert.equal(
   ).rows.length,
   0,
 );
+await role("authenticated", admin);
+await db.query("insert into public.product_types(name) values($1)", [
+  "Pantalones",
+]);
+await assert.rejects(
+  db.query("insert into public.product_types(name) values($1)", ["pantalones"]),
+  /unique/,
+);
+await assert.rejects(
+  db.query("insert into public.product_types(name) values($1)", ["Todas"]),
+  /check constraint/,
+);
+const customProduct = randomUUID();
+await db.query(saveSql, [
+  customProduct,
+  "Pantalón de prueba",
+  "",
+  2500,
+  true,
+  "Pantalones",
+  savedRows,
+  "[]",
+]);
+assert.equal(
+  (
+    await db.query("select category from public.products where id=$1", [
+      customProduct,
+    ])
+  ).rows[0].category,
+  "Pantalones",
+);
+await db.query(
+  "update public.product_types set name='Pantalones largos' where name='Pantalones'",
+);
+assert.equal(
+  (
+    await db.query("select category from public.products where id=$1", [
+      customProduct,
+    ])
+  ).rows[0].category,
+  "Pantalones largos",
+);
+await assert.rejects(
+  db.query(saveSql, [
+    customProduct,
+    "Bad",
+    "",
+    2500,
+    true,
+    "No existe",
+    savedRows,
+    "[]",
+  ]),
+  /invalid_category/,
+);
+assert.equal(
+  (
+    await db.query("select name from public.products where id=$1", [
+      customProduct,
+    ])
+  ).rows[0].name,
+  "Pantalón de prueba",
+);
+await role("authenticated", other);
+await assert.rejects(
+  db.query("insert into public.product_types(name) values('Prohibido')"),
+  /row-level security/,
+);
+assert.equal(
+  (
+    await db.query(
+      "update public.product_types set name='Prohibido' where name='Pantalones largos' returning id",
+    )
+  ).rows.length,
+  0,
+);
+await role("anon");
+assert.ok(
+  (await db.query("select name from public.product_types")).rows.some(
+    (r) => r.name === "Pantalones largos",
+  ),
+);
+await assert.rejects(
+  db.query("insert into public.product_types(name) values('Prohibido')"),
+  /permission denied/,
+);
 await db.close();
 console.log(
-  "PASS: payments archive and reopen, atomic product creation and rollback, variant IDs preserved, admin-only saves, checkout pricing, RLS, historic prices and rate limits.",
+  "PASS: custom types, duplicate validation, category rename cascade, admin-only type creation; payments archive and reopen, atomic product creation and rollback, variant IDs preserved, admin-only saves, checkout pricing, RLS, historic prices and rate limits.",
 );

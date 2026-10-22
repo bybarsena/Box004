@@ -13,7 +13,7 @@ export type Photo = {
   image_url: string;
 };
 export type Product = {
-  category?: "Camisetas" | "Crop tops" | "Sudaderas";
+  category?: string;
   id: string;
   name: string;
   description: string;
@@ -71,3 +71,5 @@ export const money = (n: number) =>
     n / 100,
   );
 export const number = (n: number) => `004-${String(n).padStart(5, "0")}`;
+
+export type ProductType = { id: string; name: string; created_at: string };
