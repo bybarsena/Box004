@@ -16,6 +16,7 @@ import {
   type Order,
   type Discount,
 } from "@/lib/types";
+import { ProductionExport } from "./production-export";
 import { csvText } from "@/lib/csv";
 import { CatalogImage } from "./catalog-image";
 import { OrderDetail, CustomerContact } from "./order-detail";
@@ -29,6 +30,7 @@ export function AdminDashboard() {
   const [session, setSession] = useState<Session | null>(null),
     [initializing, setInitializing] = useState(configured),
     [authorized, setAuthorized] = useState(false),
+    [exporting, setExporting] = useState(false),
     [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState(""),
@@ -380,6 +382,13 @@ export function AdminDashboard() {
   }
   return (
     <div className="admin-grid">
+      {exporting && authorized && (
+        <ProductionExport
+          orders={orders}
+          visible={visible}
+          onClose={() => setExporting(false)}
+        />
+      )}
       <aside className="admin-sidebar panel">
         <div className="eyebrow">Panel de gestión</div>
         <h2 className="admin-title">Todo bajo control.</h2>
@@ -565,6 +574,25 @@ export function AdminDashboard() {
                     </section>
                   ))}
                 </div>
+                <section className="panel production-banner">
+                  <div>
+                    <div className="eyebrow">Para el taller</div>
+                    <h3>De los pedidos a producción.</h3>
+                    <p>
+                      Prepara un lote con las unidades por prenda, color y
+                      talla.
+                    </p>
+                  </div>
+                  <button
+                    className="btn"
+                    disabled={
+                      loading || !orders.some((o) => o.status !== "cancelled")
+                    }
+                    onClick={() => setExporting(true)}
+                  >
+                    Exportar PDF / Excel ↓
+                  </button>
+                </section>
                 <div className="panel order-toolbar">
                   <label className="search-field">
                     <span aria-hidden="true">⌕</span>
