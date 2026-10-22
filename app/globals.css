@@ -2225,3 +2225,41 @@ p {
     padding: 9px;
   }
 }
+
+.admin-install {
+  margin-bottom: 20px;
+  padding: 18px 22px;
+  border-left: 4px solid #ffc400;
+}
+.admin-install-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.admin-install strong {
+  font-size: 17px;
+}
+.admin-install p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #686a65;
+}
+.admin-install-help {
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid #e1e3d9;
+}
+.admin-install-help p {
+  color: #30332b;
+}
+@media (max-width: 600px) {
+  .admin-install-main {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .admin-install {
+    padding: 16px;
+  }
+}
