@@ -9,6 +9,12 @@ await db.exec(
 await db.exec(
   await readFile(new URL("../database/install.sql", import.meta.url), "utf8"),
 );
+await db.exec(
+  await readFile(
+    new URL("../database/visual-order-management.sql", import.meta.url),
+    "utf8",
+  ),
+);
 const admin = randomUUID(),
   other = randomUUID(),
   product = randomUUID(),
@@ -136,6 +142,118 @@ await role("authenticated", admin);
 await db.exec(
   "insert into storage.objects(bucket_id) values('product-images')",
 );
+// New workflow: partial payment stays open, full payment archives, reversal reopens.
+await role("authenticated", admin);
+assert.equal(
+  (
+    await db.query("select archived_at from public.orders where id=$1", [
+      first.order_id,
+    ])
+  ).rows[0].archived_at,
+  null,
+);
+await db.query("update public.orders set paid_cents=total_cents where id=$1", [
+  first.order_id,
+]);
+assert.ok(
+  (
+    await db.query("select archived_at from public.orders where id=$1", [
+      first.order_id,
+    ])
+  ).rows[0].archived_at,
+);
+assert.equal(
+  (
+    await db.query(
+      "select count(*)::int as n from public.order_items where order_id=$1",
+      [first.order_id],
+    )
+  ).rows[0].n,
+  1,
+);
+await db.query(
+  "update public.orders set paid_cents=2000,archived_at=null where id=$1",
+  [first.order_id],
+);
+assert.equal(
+  (
+    await db.query("select archived_at from public.orders where id=$1", [
+      first.order_id,
+    ])
+  ).rows[0].archived_at,
+  null,
+);
+// One atomic save creates product, variants and images; updating keeps variant IDs/history.
+const newProduct = randomUUID();
+const savedRows = JSON.stringify([
+  { model: "Unisex", size: "M", color: "Negro", active: true },
+  { model: "Unisex", size: "L", color: "Negro", active: true },
+]);
+const saveArgs = [
+  newProduct,
+  "Nueva camiseta",
+  "Test",
+  2000,
+  true,
+  "Camisetas",
+  savedRows,
+  JSON.stringify([{ color: "Negro", image_url: "/images/test.png" }]),
+];
+const saveSql = "select public.save_catalog_product($1,$2,$3,$4,$5,$6,$7,$8)";
+await db.query(saveSql, saveArgs);
+const variantBefore = (
+  await db.query(
+    "select id from public.product_variants where product_id=$1 order by size",
+    [newProduct],
+  )
+).rows;
+await db.query(saveSql, [
+  newProduct,
+  "Camiseta actualizada",
+  "Test",
+  2200,
+  true,
+  "Camisetas",
+  savedRows,
+  "[]",
+]);
+assert.deepEqual(
+  (
+    await db.query(
+      "select id from public.product_variants where product_id=$1 order by size",
+      [newProduct],
+    )
+  ).rows,
+  variantBefore,
+);
+assert.equal(
+  (await db.query("select name from public.products where id=$1", [newProduct]))
+    .rows[0].name,
+  "Camiseta actualizada",
+);
+await assert.rejects(
+  db.query(saveSql, [
+    newProduct,
+    "No debe guardarse",
+    "",
+    2200,
+    true,
+    "Camisetas",
+    JSON.stringify([{ model: "", size: "M", color: "Negro", active: true }]),
+    "[]",
+  ]),
+  /invalid_variant/,
+);
+assert.equal(
+  (await db.query("select name from public.products where id=$1", [newProduct]))
+    .rows[0].name,
+  "Camiseta actualizada",
+);
+await role("authenticated", other);
+await assert.rejects(db.query(saveSql, saveArgs), /admin_required/);
+await role("anon");
+await assert.rejects(db.query(saveSql, saveArgs), /permission denied/);
+
 await role("service_role");
 for (let i = 0; i < 30; i++) await submit({ qty: 1, rate: "limit" });
 await assert.rejects(submit({ rate: "limit" }), /rate_limit/);
@@ -147,10 +265,15 @@ await role("service_role");
 await assert.rejects(submit(), /unavailable_variant/);
 await role("anon");
 assert.equal(
-  (await db.query("select * from public.product_variants")).rows.length,
+  (
+    await db.query(
+      "select * from public.product_variants where product_id=$1",
+      [product],
+    )
+  ).rows.length,
   0,
 );
 await db.close();
 console.log(
-  "PASS: checkout pricing, discounts, idempotency, catalog RLS, admin isolation, historic prices, storage roles, rate limits.",
+  "PASS: payments archive and reopen, atomic product creation and rollback, variant IDs preserved, admin-only saves, checkout pricing, RLS, historic prices and rate limits.",
 );

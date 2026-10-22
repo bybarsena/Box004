@@ -13,6 +13,7 @@ export type Photo = {
   image_url: string;
 };
 export type Product = {
+  category?: "Camisetas" | "Crop tops" | "Sudaderas";
   id: string;
   name: string;
   description: string;
@@ -22,6 +23,7 @@ export type Product = {
   product_color_images: Photo[];
 };
 export type Item = {
+  variant_id: string;
   id: string;
   product_name: string;
   model: string;
@@ -31,6 +33,7 @@ export type Item = {
   unit_price_cents: number;
 };
 export type Order = {
+  archived_at: string | null;
   id: string;
   sequence: number;
   created_at: string;
@@ -57,9 +60,9 @@ export type Discount = {
   expires_at: string | null;
 };
 export const statuses: Record<string, string> = {
-  pending: "Pendiente",
-  ordered: "Encargado",
-  ready: "Listo para recoger",
+  pending: "Nuevo",
+  ordered: "En preparación",
+  ready: "En el centro",
   delivered: "Entregado",
   cancelled: "Cancelado",
 };

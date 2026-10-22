@@ -1,8 +1,10 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getSupabase, errorMessage } from "@/lib/supabase";
-import type { Product } from "@/lib/types";
-import { recoveredImages } from "@/lib/assets";
+import { money, type Product } from "@/lib/types";
+import { swatch, categoryOf } from "@/lib/catalog";
+type Row = { model: string; size: string; color: string; active: boolean };
+type Photo = { color: string; image_url: string; file?: File };
 export function ProductEditor({
   product,
   onClose,
@@ -12,331 +14,463 @@ export function ProductEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [busy, setBusy] = useState(false),
-    [message, setMessage] = useState(""),
-    [color, setColor] = useState("");
-  const colors = [...new Set(product?.product_variants.map((v) => v.color) || [])];
-  const photoColor = colors.includes(color) ? color : colors[0] || "";
-  const colorPhotos = product?.product_color_images.filter((i) => i.color.trim().toLowerCase() === photoColor.trim().toLowerCase()) || [];
-  async function run(fn: () => Promise<void>) {
-    setBusy(true);
+  const [category, setCategory] = useState(categoryOf(product || ""));
+  const [id] = useState(() => product?.id || crypto.randomUUID()),
+    [name, setName] = useState(product?.name || ""),
+    [price, setPrice] = useState(
+      product ? String(product.price_cents / 100) : "20",
+    ),
+    [description, setDescription] = useState(product?.description || ""),
+    [active, setActive] = useState(product?.active ?? true),
+    [rows, setRows] = useState<Row[]>(
+      () =>
+        product?.product_variants.map(({ model, size, color, active }) => ({
+          model,
+          size,
+          color,
+          active,
+        })) || [],
+    ),
+    [photos, setPhotos] = useState<Photo[]>(
+      () =>
+        product?.product_color_images.map(({ color, image_url }) => ({
+          color,
+          image_url,
+        })) || [],
+    ),
+    [model, setModel] = useState("Unisex"),
+    [colors, setColors] = useState("Negro, Blanco"),
+    [sizes, setSizes] = useState(["S", "M", "L", "XL"]),
+    [customSize, setCustomSize] = useState(""),
+    [photoColor, setPhotoColor] = useState("Portada"),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState("");
+  const urls = useRef<string[]>([]);
+  useEffect(
+    () => () => {
+      urls.current.forEach((u) => URL.revokeObjectURL(u));
+    },
+    [],
+  );
+  const activeColors = [
+    ...new Set(rows.filter((r) => r.active).map((r) => r.color)),
+  ];
+  function addVariants() {
+    const cs = [
+      ...new Set(
+        colors
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (!model.trim() || !cs.length || !sizes.length) {
+      setMessage("Indica modelo, colores y al menos una talla.");
+      return;
+    }
+    const additions = cs.flatMap((color) =>
+      sizes.map((size) => ({ model: model.trim(), color, size, active: true })),
+    );
+    setRows((prev) => {
+      const next = [...prev];
+      for (const r of additions) {
+        const index = next.findIndex(
+          (x) =>
+            x.model === r.model && x.color === r.color && x.size === r.size,
+        );
+        if (index < 0) next.push(r);
+        else next[index] = r;
+      }
+      return next;
+    });
+    setMessage("Combinaciones preparadas. Guarda la prenda para aplicarlas.");
+  }
+  function chooseFiles(files: FileList | null) {
+    if (!files) return;
+    const added: Photo[] = [];
+    for (const file of Array.from(files)) {
+      if (
+        !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
+        file.size > 5242880
+      ) {
+        setMessage("Usa fotos JPG, PNG o WebP de hasta 5 MB.");
+        return;
+      }
+      const image_url = URL.createObjectURL(file);
+      urls.current.push(image_url);
+      added.push({ color: photoColor, image_url, file });
+    }
+    setPhotos((p) => [...p, ...added]);
+    setMessage("Fotos preparadas para guardar.");
+  }
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setMessage("");
+    if (active && !rows.some((r) => r.active)) {
+      setMessage(
+        "Añade las tallas y colores antes de publicar. También puedes guardar como borrador.",
+      );
+      return;
+    }
+    if (rows.length > 300) {
+      setMessage("Máximo 300 combinaciones por prenda.");
+      return;
+    }
+    if (photos.length > 50) {
+      setMessage("Máximo 50 fotos por prenda.");
+      return;
+    }
+    setBusy(true);
     try {
-      await fn();
+      const cents = Math.round(Number(price) * 100);
+      if (!Number.isFinite(cents) || cents < 0 || cents > 1000000)
+        throw new Error("Revisa el precio.");
+      const db = getSupabase();
+      const uploaded: Photo[] = [];
+      for (const photo of photos) {
+        if (!photo.file) {
+          uploaded.push(photo);
+          continue;
+        }
+        const path = `${id}/${crypto.randomUUID()}.${photo.file.type.split("/")[1]}`;
+        const { error } = await db.storage
+          .from("product-images")
+          .upload(path, photo.file, {
+            contentType: photo.file.type,
+            upsert: false,
+          });
+        if (error) throw error;
+        const { data } = db.storage.from("product-images").getPublicUrl(path);
+        uploaded.push({ color: photo.color, image_url: data.publicUrl });
+      }
+      setPhotos(uploaded);
+      const { error } = await db.rpc("save_catalog_product", {
+        p_id: id,
+        p_name: name.trim(),
+        p_description: description,
+        p_price_cents: cents,
+        p_active: active,
+        p_category: category,
+        p_variants: rows,
+        p_photos: uploaded.map(({ color, image_url }) => ({
+          color,
+          image_url,
+        })),
+      });
+      if (error) throw error;
       onSaved();
+      onClose();
     } catch (e) {
       setMessage(errorMessage(e));
     } finally {
       setBusy(false);
     }
   }
-  function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    void run(async () => {
-      const active = f.get("active") === "on";
-      if (active && !product?.product_variants.some((v) => v.active))
-        throw new Error(
-          "Guarda primero como borrador y añade tallas antes de publicar.",
-        );
-      const cents = Math.round(Number(f.get("price")) * 100);
-      if (!Number.isFinite(cents) || cents < 0 || cents > 1000000)
-        throw new Error("Precio no válido.");
-      const data = {
-        name: String(f.get("name")).trim(),
-        description: String(f.get("description")),
-        price_cents: cents,
-        active,
-      };
-      const db = getSupabase();
-      const { error } = product
-        ? await db.from("products").update(data).eq("id", product.id)
-        : await db.from("products").insert(data);
-      if (error) throw error;
-      onClose();
-    });
-  }
-  function variants(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!product) return;
-    const f = new FormData(e.currentTarget),
-      form = e.currentTarget;
-    void run(async () => {
-      const sizes = [
-          ...new Set(
-            String(f.get("sizes"))
-              .split(",")
-              .map((x) => x.trim())
-              .filter(Boolean),
-          ),
-        ],
-        colors = [
-          ...new Set(
-            String(f.get("colors"))
-              .split(",")
-              .map((x) => x.trim())
-              .filter(Boolean),
-          ),
-        ];
-      if (!sizes.length || !colors.length || sizes.length * colors.length > 100)
-        throw new Error("Indica tallas y colores. Máximo 100 combinaciones.");
-      const rows = colors.flatMap((color) =>
-        sizes.map((size) => ({
-          product_id: product.id,
-          model: String(f.get("model")).trim(),
-          size,
-          color,
-        })),
-      );
-      const { error } = await getSupabase()
-        .from("product_variants")
-        .upsert(rows, {
-          onConflict: "product_id,model,size,color",
-          ignoreDuplicates: true,
-        });
-      if (error) throw error;
-      form.reset();
-    });
-  }
-  async function addRecovered(image: string) {
-    if (!product || !photoColor) throw new Error("Indica primero el color.");
-    const { error } = await getSupabase()
-      .from("product_color_images")
-      .insert({
-        product_id: product.id,
-        color: photoColor,
-        image_url: "/images/" + image,
-      });
-    if (error) throw error;
-  }
-  async function upload(file: File) {
-    if (!product) return;
-    if (!photoColor)
-      throw new Error("Indica el color antes de subir la imagen.");
-    if (
-      !["image/png", "image/jpeg", "image/webp"].includes(file.type) ||
-      file.size > 5242880
-    )
-      throw new Error("Usa JPG, PNG o WebP de hasta 5 MB.");
-    const db = getSupabase(),
-      path = `${product.id}/${crypto.randomUUID()}.${file.type.split("/")[1]}`;
-    const { error } = await db.storage
-      .from("product-images")
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw error;
-    const { data } = db.storage.from("product-images").getPublicUrl(path);
-    const { error: ie } = await db
-      .from("product_color_images")
-      .insert({
-        product_id: product.id,
-        color: photoColor,
-        image_url: data.publicUrl,
-      });
-    if (ie) throw ie;
-  }
   return (
-    <section className="panel">
-      <div className="section-heading">
-        <h2>{product ? "Editar prenda" : "Nueva prenda"}</h2>
-        <button className="btn secondary" onClick={onClose}>
-          Cerrar
+    <section className="product-editor">
+      <div className="section-heading admin-page-heading">
+        <div>
+          <div className="eyebrow">Catálogo · Editor de prendas</div>
+          <h1>{product ? "Editar prenda" : "Nueva prenda"}</h1>
+          <p className="muted">
+            Nombre, combinaciones y fotos. Todo en un solo lugar.
+          </p>
+        </div>
+        <button className="btn secondary" disabled={busy} onClick={onClose}>
+          ← Volver a prendas
         </button>
       </div>
-      {message && (
-        <div className="notice error" role="alert">
-          {message}
-        </div>
-      )}
       <form onSubmit={save}>
-        <div className="form-grid">
-          <label className="field">
-            Nombre
-            <input
-              name="name"
-              required
-              maxLength={160}
-              defaultValue={product?.name}
-            />
-          </label>
-          <label className="field">
-            Precio (€)
-            <input
-              name="price"
-              required
-              type="number"
-              min="0"
-              max="10000"
-              step="0.01"
-              defaultValue={product ? product.price_cents / 100 : ""}
-            />
-          </label>
-          <label className="field full">
-            Descripción
-            <textarea
-              name="description"
-              rows={3}
-              maxLength={2000}
-              defaultValue={product?.description}
-            />
-          </label>
-        </div>
-        <label className="check">
-          <input
-            name="active"
-            type="checkbox"
-            defaultChecked={product?.active}
-          />
-          Publicada y disponible para pedidos
-        </label>
-        <button className="btn" disabled={busy}>
-          Guardar prenda
-        </button>
-      </form>
-      {!product ? (
-        <p className="notice">
-          Guarda la prenda como borrador. Después, desde «Editar», añade tallas,
-          colores y fotos.
-        </p>
-      ) : (
-        <>
-          <hr className="divider" />
-          <h3>Tallas y colores</h3>
-          <div className="variant-list">
-            {product.product_variants.map((v) => (
-              <label className="check" key={v.id}>
-                <input
-                  type="checkbox"
-                  checked={v.active}
-                  disabled={busy}
-                  onChange={() =>
-                    void run(async () => {
-                      const { error } = await getSupabase()
-                        .from("product_variants")
-                        .update({ active: !v.active })
-                        .eq("id", v.id);
-                      if (error) throw error;
-                    })
-                  }
-                />
-                {v.model} · {v.size} · {v.color}
-              </label>
-            ))}
-          </div>
-          <p className="muted">Añade tallas y colores separados por comas. Se crearán todas sus combinaciones; desmarca las que no estén disponibles.</p>
-          <form onSubmit={variants}>
-            <div className="form-grid">
-              <label className="field">
-                Modelo
-                <input
-                  name="model"
-                  required
-                  maxLength={80}
-                  defaultValue="Unisex"
-                />
-              </label>
-              <label className="field">
-                Tallas separadas por comas
-                <input
-                  name="sizes"
-                  required
-                  maxLength={500}
-                  placeholder="S, M, L, XL"
-                />
-              </label>
-              <label className="field full">
-                Colores separados por comas
-                <input
-                  name="colors"
-                  required
-                  maxLength={500}
-                  placeholder="Negro, Blanco"
-                />
-              </label>
-            </div>
-            <div className="actions">
-              <button className="btn secondary" disabled={busy}>
-                Añadir combinaciones
-              </button>
-            </div>
-          </form>
-          <hr className="divider" />
-          <h3>Fotos por color</h3>
-          <p className="muted">Elige un color de los que has creado y añade su foto. Al cambiar de color en el pedido, cambiarán las imágenes.</p>
-          <label className="field">
-            Color de las fotos
-            <select value={photoColor} disabled={!colors.length || busy} onChange={(e) => setColor(e.target.value)}>
-              {!colors.length && <option value="">Añade primero tallas y colores</option>}
-              {colors.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-          <div className="image-strip">
-            {colorPhotos.map((i) => (
-              <div className="image-item" key={i.id}>
-                <img src={i.image_url} alt={i.color} />
-                <span>{i.color}</span>
-                <button
-                  className="btn danger"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const { error } = await getSupabase()
-                        .from("product_color_images")
-                        .delete()
-                        .eq("id", i.id);
-                      if (error) throw error;
-                    })
-                  }
-                >
-                  Quitar del catálogo
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="form-grid">
-            <label className="field">
-              Subir foto (hasta 5 MB)
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={busy || !photoColor}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (file) void run(() => upload(file));
-                }}
-              />
-            </label>
-          </div>
-          <details className="asset-gallery">
-            <summary>Elegir entre las 12 imágenes recuperadas</summary>
-            <p className="muted">
-              La imagen que pulses se asociará al color {photoColor || "que selecciones"}.
-            </p>
-            <div className="product-grid">
-              {recoveredImages.map((image) => (
+        <fieldset disabled={busy} className="plain-fieldset">
+          <div className="editor-layout">
+            <div className="stack">
+              <section className="panel">
+                <div className="step-heading">
+                  <span>01</span>
+                  <h2>Lo esencial</h2>
+                </div>
+                <div className="form-grid">
+                  <label className="field">
+                    Nombre de la prenda
+                    <input
+                      required
+                      maxLength={160}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Ej. Camiseta Athlete"
+                    />
+                  </label>
+                  <label className="field">
+                    Precio (€)
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      max={10000}
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    Tipo de prenda
+                    <select
+                      value={category}
+                      onChange={(e) =>
+                        setCategory(e.target.value as typeof category)
+                      }
+                    >
+                      <option>Camisetas</option>
+                      <option>Crop tops</option>
+                      <option>Sudaderas</option>
+                    </select>
+                  </label>
+                  <label className="field full">
+                    Descripción opcional
+                    <textarea
+                      value={description}
+                      rows={2}
+                      maxLength={2000}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section className="panel">
+                <div className="step-heading">
+                  <span>02</span>
+                  <h2>Tallas y colores</h2>
+                </div>
+                <div className="form-grid">
+                  <label className="field">
+                    Modelo
+                    <input
+                      value={model}
+                      maxLength={80}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="Unisex, Athlete…"
+                    />
+                  </label>
+                  <label className="field">
+                    Colores separados por comas
+                    <input
+                      value={colors}
+                      maxLength={500}
+                      onChange={(e) => setColors(e.target.value)}
+                      placeholder="Negro, Blanco"
+                    />
+                  </label>
+                </div>
+                <fieldset className="option-group">
+                  <legend>Tallas para añadir</legend>
+                  <div className="option-buttons">
+                    {[
+                      ...new Set(["XS", "S", "M", "L", "XL", "XXL", ...sizes]),
+                    ].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        aria-pressed={sizes.includes(s)}
+                        className={sizes.includes(s) ? "selected" : ""}
+                        onClick={() =>
+                          setSizes((prev) =>
+                            prev.includes(s)
+                              ? prev.filter((x) => x !== s)
+                              : [...prev, s],
+                          )
+                        }
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="custom-size">
+                  <input
+                    aria-label="Otra talla"
+                    placeholder="Otra talla: 3XL, 12…"
+                    maxLength={80}
+                    value={customSize}
+                    onChange={(e) => setCustomSize(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={!customSize.trim()}
+                    onClick={() => {
+                      setSizes((s) => [...new Set([...s, customSize.trim()])]);
+                      setCustomSize("");
+                    }}
+                  >
+                    Añadir talla
+                  </button>
+                </div>
                 <button
                   type="button"
-                  className="product-card"
-                  key={image}
-                  disabled={busy || !photoColor}
-                  onClick={() => void run(() => addRecovered(image))}
+                  className="btn secondary"
+                  onClick={addVariants}
                 >
-                  <img
-                    className="product-thumb"
-                    src={"/images/" + image}
-                    alt={image.replace(/_/g, " ")}
-                  />
-                  <small>{image.replace(/_/g, " ")}</small>
+                  ＋ Añadir estas combinaciones
                 </button>
-              ))}
+                <p className="muted">
+                  {rows.filter((r) => r.active).length} combinaciones
+                  disponibles. Desmarca las que no quieras vender.
+                </p>
+                <div className="variant-chips">
+                  {rows.map((r, i) => (
+                    <label
+                      key={`${r.model}-${r.color}-${r.size}`}
+                      className={r.active ? "selected" : ""}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={r.active}
+                        onChange={(e) =>
+                          setRows((prev) =>
+                            prev.map((x, j) =>
+                              i === j ? { ...x, active: e.target.checked } : x,
+                            ),
+                          )
+                        }
+                      />
+                      <span>
+                        <i style={{ background: swatch(r.color) }} />
+                        {r.color} · <b>{r.size}</b>
+                        <small>{r.model}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+              <section className="panel">
+                <div className="step-heading">
+                  <span>03</span>
+                  <h2>Fotos de la prenda</h2>
+                </div>
+                <p className="muted">
+                  La portada se ve en el catálogo. Las fotos por color se
+                  muestran al elegir ese color.
+                </p>
+                <div className="form-grid">
+                  <label className="field">
+                    Asignar las nuevas fotos a
+                    <select
+                      value={photoColor}
+                      onChange={(e) => setPhotoColor(e.target.value)}
+                    >
+                      <option value="Portada">Portada del catálogo</option>
+                      {activeColors.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Subir fotos
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(e) => {
+                        chooseFiles(e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="photo-grid">
+                  {photos.map((p, i) => (
+                    <article key={`${p.image_url}-${i}`}>
+                      <img
+                        src={p.image_url}
+                        alt={`Foto ${i + 1}, ${p.color}`}
+                      />
+                      <label className="field">
+                        <span className="sr-only">
+                          Color de la foto {i + 1}
+                        </span>
+                        <select
+                          value={p.color}
+                          onChange={(e) =>
+                            setPhotos((ps) =>
+                              ps.map((x, j) =>
+                                i === j ? { ...x, color: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        >
+                          {[
+                            ...new Set(["Portada", ...activeColors, p.color]),
+                          ].map((c) => (
+                            <option key={c}>{c}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="text-button danger-text"
+                        onClick={() =>
+                          setPhotos((ps) => ps.filter((_, j) => j !== i))
+                        }
+                      >
+                        Quitar foto
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
             </div>
-          </details>
-          <p className="muted">
-            Puedes añadir varias fotos del mismo color: frontal, trasera y
-            detalles. Los pedidos anteriores conservan su precio original.
-          </p>
-        </>
-      )}
+            <aside className="panel editor-preview">
+              <div className="eyebrow">Así se verá</div>
+              {photos[0] ? (
+                <img
+                  src={
+                    (photos.find((p) => p.color === "Portada") || photos[0])
+                      .image_url
+                  }
+                  alt="Vista previa de la prenda"
+                />
+              ) : (
+                <div className="image-placeholder">004</div>
+              )}
+              <h3>{name || "Nombre de la prenda"}</h3>
+              <strong>{money(Math.round((Number(price) || 0) * 100))}</strong>
+              <p className="muted">
+                {activeColors.join(" · ") || "Añade tallas y colores"}
+              </p>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={(e) => setActive(e.target.checked)}
+                />
+                Publicar en el catálogo
+              </label>
+              <p className="muted fine-print">
+                {active
+                  ? "Los clientes podrán reservar esta prenda."
+                  : "Se guardará como borrador, visible solo para administración."}
+              </p>
+              <button className="btn wide" disabled={busy}>
+                {busy
+                  ? "Guardando prenda…"
+                  : active
+                    ? "Guardar y publicar"
+                    : "Guardar borrador"}
+              </button>
+              <p className="muted fine-print">
+                Los pedidos anteriores conservan su precio.
+              </p>
+            </aside>
+          </div>
+          {message && (
+            <p className="notice" role="status">
+              {message}
+            </p>
+          )}
+        </fieldset>
+      </form>
     </section>
   );
 }
