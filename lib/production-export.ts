@@ -1,11 +1,14 @@
-import type { Order } from "./types";
+import type { Order, Product } from "./types";
 import { number, statuses } from "./types";
+import { productionImageKey, loadProductionImages } from "./production-images";
 import { productionSummary, productionOrders } from "./production";
 export type ExportOptions = {
   title: string;
   scope: string;
   includeNames: boolean;
   createdAt: Date;
+  products?: Product[];
+  images?: Record<string, string>;
 };
 const stamp = (d: Date) =>
   d.toLocaleString("es-ES", {
@@ -24,6 +27,10 @@ export async function productionPdf(input: Order[], options: ExportOptions) {
     summary = productionSummary(orders);
   if (!orders.length)
     throw new Error("Selecciona al menos un pedido no cancelado.");
+  for (const row of summary) {
+    if (!options.images?.[productionImageKey(row)])
+      throw new Error(`Falta la foto de ${row.product} · ${row.color}.`);
+  }
   const doc = new jsPDF();
   const fonts = await import("./production-font");
   doc.addFileToVFS("Box-Regular.ttf", fonts.regular);
@@ -77,55 +84,42 @@ export async function productionPdf(input: Order[], options: ExportOptions) {
   autoTable(doc, {
     startY: 94,
     margin: { top: 20, bottom: 18, left: 14, right: 14 },
-    head: [["Prenda", "Modelo", "Color", "Talla", "Unidades"]],
-    body: summary.map((r) => [r.product, r.model, r.color, r.size, r.quantity]),
-    foot: [["TOTAL", "", "", "", units]],
+    head: [["Foto", "Prenda / modelo", "Color", "Talla", "Unidades"]],
+    body: summary.map((r) => [
+      "",
+      `${r.product}\n${r.model}`,
+      r.color,
+      r.size,
+      r.quantity,
+    ]),
+    foot: [["", "TOTAL", "", "", units]],
     showFoot: "lastPage",
     rowPageBreak: "avoid",
-    styles: tableStyle,
+    styles: { ...tableStyle, valign: "middle" },
+    bodyStyles: { minCellHeight: 29 },
+    didDrawCell: (data) => {
+      if (data.section !== "body" || data.column.index !== 0) return;
+      const photo =
+        options.images?.[productionImageKey(summary[data.row.index])];
+      if (photo)
+        doc.addImage(
+          photo,
+          data.cell.x + 2,
+          data.cell.y + (data.cell.height - 25) / 2,
+          25,
+          25,
+        );
+    },
     headStyles: { fillColor: [27, 28, 27], textColor: [255, 255, 255] },
     footStyles: { fillColor: [255, 196, 0], textColor: [27, 28, 27] },
     alternateRowStyles: { fillColor: [246, 246, 241] },
     columnStyles: {
-      0: { cellWidth: 65 },
+      0: { cellWidth: 29 },
+      1: { cellWidth: 76 },
+      2: { cellWidth: 32 },
       3: { cellWidth: 18 },
       4: { cellWidth: 27, halign: "right" },
     },
-  });
-  doc.addPage();
-  header("Desglose por pedido");
-  const body = orders.flatMap((o) =>
-    o.order_items.map((i) => [
-      number(o.sequence),
-      ...(options.includeNames ? [`${o.first_name} ${o.last_name}`] : []),
-      `${i.product_name}\n${i.model}`,
-      i.color,
-      i.size,
-      String(i.quantity),
-      ...(options.includeNames
-        ? [[o.notes, o.admin_notes].filter(Boolean).join(" / ")]
-        : []),
-    ]),
-  );
-  autoTable(doc, {
-    startY: 94,
-    margin: { top: 20, bottom: 18, left: 14, right: 14 },
-    head: [
-      [
-        "Pedido",
-        ...(options.includeNames ? ["Cliente"] : []),
-        "Prenda / modelo",
-        "Color",
-        "Talla",
-        "Ud.",
-        ...(options.includeNames ? ["Notas"] : []),
-      ],
-    ],
-    body,
-    styles: { ...tableStyle, fontSize: options.includeNames ? 8 : 9 },
-    headStyles: { fillColor: [27, 28, 27], textColor: [255, 255, 255] },
-    alternateRowStyles: { fillColor: [246, 246, 241] },
-    rowPageBreak: "avoid",
   });
   const pages = doc.getNumberOfPages();
   for (let p = 1; p <= pages; p++) {
@@ -327,7 +321,10 @@ export async function downloadProduction(
   options: ExportOptions,
 ) {
   if (format === "pdf") {
-    const doc = await productionPdf(orders, options);
+    const images =
+      options.images ||
+      (await loadProductionImages(orders, options.products || []));
+    const doc = await productionPdf(orders, { ...options, images });
     doc.save(`${fileName(options)}.pdf`);
     return;
   }

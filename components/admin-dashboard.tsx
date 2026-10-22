@@ -386,6 +386,7 @@ export function AdminDashboard() {
         <ProductionExport
           orders={orders}
           visible={visible}
+          products={products}
           onClose={() => setExporting(false)}
         />
       )}

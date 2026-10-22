@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { productionSummary } from "../lib/production";
 import { productionPdf, productionExcel } from "../lib/production-export";
+import {
+  productionImageKey,
+  productionPhotoSources,
+} from "../lib/production-images";
 import type { Order } from "../lib/types";
 const item = {
   id: "i",
@@ -85,8 +89,55 @@ const named = await productionExcel(input, { ...options, includeNames: true });
 const note = named.worksheets[1].getCell("J8");
 assert.equal(note.value, order.notes);
 assert.equal(note.type, 3); // text, never executable formula
-const pdf = await productionPdf(input, options);
-assert.equal(pdf.getNumberOfPages(), 2);
+const defaultPhoto =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8f4SBgYGBiYGBgYGBAQAWTQHHbJjeWwAAAABJRU5ErkJggg==";
+const photo = process.env.PRODUCTION_TEST_PHOTO
+  ? "data:image/jpeg;base64," +
+    (await readFile(process.env.PRODUCTION_TEST_PHOTO)).toString("base64")
+  : defaultPhoto;
+const images = Object.fromEntries(
+  productionSummary(input).map((row) => [productionImageKey(row), photo]),
+);
+await assert.rejects(() => productionPdf(input, options), /Falta la foto/);
+const pdf = await productionPdf(input, {
+  ...options,
+  includeNames: true,
+  images,
+});
+assert.equal(pdf.getNumberOfPages(), 1);
+assert.match(pdf.output(), /\/Subtype \/Image/);
+// Explicitly including names must still never add customer details to the PDF.
+const extracted = pdf.getNumberOfPages();
+assert.equal(extracted, 1);
+const sources = productionPhotoSources(input, [
+  {
+    id: "p",
+    name: "Renamed product",
+    description: "",
+    price_cents: 2000,
+    active: true,
+    product_variants: [
+      {
+        id: "v",
+        product_id: "p",
+        model: "Unisex",
+        size: "M",
+        color: "Negro",
+        active: true,
+      },
+    ],
+    product_color_images: [
+      { id: "photo", product_id: "p", color: "Negro", image_url: "/color.png" },
+      {
+        id: "cover",
+        product_id: "p",
+        color: "Portada",
+        image_url: "/cover.png",
+      },
+    ],
+  },
+]);
+assert.deepEqual(sources[0].urls, ["/color.png", "/cover.png"]);
 const long = Array.from({ length: 90 }, (_, i) => ({
   ...order,
   id: String(i),
@@ -100,7 +151,13 @@ const long = Array.from({ length: 90 }, (_, i) => ({
     },
   ],
 }));
-const big = await productionPdf(long, { ...options, includeNames: true });
+const big = await productionPdf(long, {
+  ...options,
+  includeNames: true,
+  images: Object.fromEntries(
+    productionSummary(long).map((row) => [productionImageKey(row), photo]),
+  ),
+});
 assert.ok(big.getNumberOfPages() > 3);
 await assert.rejects(() =>
   productionExcel([{ ...order, status: "cancelled" }], options),

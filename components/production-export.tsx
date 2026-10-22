@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { Order } from "@/lib/types";
+import type { Order, Product } from "@/lib/types";
 import { number, statuses } from "@/lib/types";
 import { productionSummary } from "@/lib/production";
 export function ProductionExport({
   orders,
   visible,
+  products,
   onClose,
 }: {
   orders: Order[];
   visible: Order[];
+  products: Product[];
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -67,12 +69,17 @@ export function ProductionExport({
         scope: scopes[scope],
         includeNames: names,
         createdAt: new Date(),
+        products,
       });
       setSuccess(
         `${format === "pdf" ? "PDF" : "Excel"} preparado. La descarga se ha iniciado.`,
       );
-    } catch {
-      setError("No se pudo generar el archivo. Inténtalo de nuevo.");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "No se pudo generar el archivo. Inténtalo de nuevo.",
+      );
     } finally {
       setBusy("");
     }
@@ -249,10 +256,11 @@ export function ProductionExport({
           onChange={(e) => setNames(e.target.checked)}
         />
         <span>
-          Incluir nombres de clientes y notas
+          Incluir nombres y notas en el Excel
           <small>
-            Por defecto, los documentos llevan solo referencias y prendas. No
-            incluyen teléfonos, correos ni importes.
+            El PDF contiene solo el resumen con fotos. Por defecto, el Excel
+            lleva referencias y prendas. No incluyen teléfonos, correos ni
+            importes.
           </small>
         </span>
       </label>
@@ -272,7 +280,7 @@ export function ProductionExport({
       )}
       <div className="production-footer">
         <span>
-          PDF con resumen y desglose. Excel con dos hojas, filtros y totales.
+          PDF con resumen y fotos. Excel con dos hojas, filtros y totales.
         </span>
         <div className="actions">
           <button
