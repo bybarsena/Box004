@@ -1,0 +1,84 @@
+-- Install once, only in a NEW dedicated Box 004 Supabase project.
+begin;
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated,service_role;
+create table public.admin_users(user_id uuid primary key references auth.users(id) on delete cascade);
+alter table public.admin_users enable row level security;
+create policy own_membership on public.admin_users for select to authenticated using(user_id=(select auth.uid()));
+grant select on public.admin_users to authenticated;
+create function private.is_admin() returns boolean language sql stable security definer set search_path='' as $$ select auth.uid() is not null and exists(select 1 from public.admin_users where user_id=auth.uid()); $$;
+revoke all on function private.is_admin() from public;
+grant execute on function private.is_admin() to authenticated;
+create table public.products(id uuid primary key default gen_random_uuid(),name text not null check(length(trim(name)) between 1 and 160),description text not null default '',price_cents integer not null check(price_cents between 0 and 1000000),active boolean not null default false,created_at timestamptz not null default now());
+create table public.product_variants(id uuid primary key default gen_random_uuid(),product_id uuid not null references public.products(id),model text not null,size text not null,color text not null,active boolean not null default true,unique(product_id,model,size,color));
+create index on public.product_variants(product_id);
+create table public.product_color_images(id uuid primary key default gen_random_uuid(),product_id uuid not null references public.products(id),color text not null,image_url text not null check(image_url ~ '^(/images/|https://)'));
+create index on public.product_color_images(product_id);
+create table public.discounts(code text primary key check(code=upper(trim(code)) and length(code) between 1 and 40),percent integer not null check(percent between 1 and 100),active boolean not null default true,expires_at timestamptz);
+create table public.orders(id uuid primary key default gen_random_uuid(),sequence bigint generated always as identity unique,request_id uuid not null unique,created_at timestamptz not null default now(),first_name text not null,last_name text not null,email text,phone text,notes text not null default '',admin_notes text not null default '',source text not null check(source in('web','manual')),status text not null default 'pending' check(status in('pending','ordered','ready','delivered','cancelled')),subtotal_cents integer not null check(subtotal_cents>=0),discount_code text,discount_cents integer not null check(discount_cents>=0),total_cents integer not null check(total_cents>=0),paid_cents integer not null default 0 check(paid_cents>=0),check(total_cents=subtotal_cents-discount_cents));
+create table public.order_items(id uuid primary key default gen_random_uuid(),order_id uuid not null references public.orders(id),variant_id uuid not null references public.product_variants(id),product_name text not null,model text not null,size text not null,color text not null,quantity integer not null check(quantity between 1 and 20),unit_price_cents integer not null check(unit_price_cents>=0));
+create index on public.order_items(order_id);
+create index on public.orders(created_at desc);
+create table private.order_limits(key text primary key,window_start timestamptz not null,hits integer not null);
+alter table private.order_limits enable row level security;
+alter table public.products enable row level security;
+alter table public.product_variants enable row level security;
+alter table public.product_color_images enable row level security;
+alter table public.discounts enable row level security;
+alter table public.orders enable row level security;
+alter table public.order_items enable row level security;
+create policy catalog_read on public.products for select to anon,authenticated using(active);
+create policy variants_read on public.product_variants for select to anon,authenticated using(active and exists(select 1 from public.products p where p.id=product_id and p.active));
+create policy images_read on public.product_color_images for select to anon,authenticated using(exists(select 1 from public.products p where p.id=product_id and p.active));
+create policy products_admin on public.products for all to authenticated using((select private.is_admin())) with check((select private.is_admin()));
+create policy variants_admin on public.product_variants for all to authenticated using((select private.is_admin())) with check((select private.is_admin()));
+create policy images_admin on public.product_color_images for all to authenticated using((select private.is_admin())) with check((select private.is_admin()));
+create policy discounts_admin on public.discounts for all to authenticated using((select private.is_admin())) with check((select private.is_admin()));
+create policy orders_read on public.orders for select to authenticated using((select private.is_admin()));
+create policy orders_update on public.orders for update to authenticated using((select private.is_admin())) with check((select private.is_admin()));
+create policy items_read on public.order_items for select to authenticated using((select private.is_admin()));
+-- Clear any Supabase default grants before granting the exact privileges below.
+revoke all on public.admin_users,public.products,public.product_variants,public.product_color_images,public.discounts,public.orders,public.order_items from anon,authenticated;
+grant select on public.admin_users to authenticated;
+grant select on public.products,public.product_variants,public.product_color_images to anon,authenticated;
+grant insert,update on public.products,public.product_variants to authenticated;
+grant insert,update,delete on public.product_color_images,public.discounts to authenticated;
+grant select on public.discounts,public.orders,public.order_items to authenticated;
+grant update(status,admin_notes,paid_cents) on public.orders to authenticated;
+grant all on all tables in schema public,private to service_role;
+grant usage,select on all sequences in schema public to service_role;
+create function public.submit_order(p_request_id uuid,p_customer jsonb,p_lines jsonb,p_discount text,p_source text,p_rate_key text) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare o public.orders; l jsonb; v record; subtotal integer:=0; pct integer:=0; reduction integer:=0; hit_count integer;
+begin
+ if p_source not in('web','manual') or jsonb_typeof(p_lines)<>'array' or jsonb_array_length(p_lines) not between 1 and 20 then raise exception 'invalid_order'; end if;
+ if coalesce(length(trim(p_customer->>'first_name')),0) not between 1 and 80 or coalesce(length(trim(p_customer->>'last_name')),0) not between 1 and 120 then raise exception 'invalid_customer'; end if;
+ if coalesce(nullif(trim(p_customer->>'email'),''),nullif(trim(p_customer->>'phone'),'')) is null then raise exception 'contact_required'; end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_request_id::text,0));
+ select * into o from public.orders where request_id=p_request_id;
+ if found then return jsonb_build_object('order_id',o.id,'order_number','004-'||lpad(o.sequence::text,5,'0'),'total_cents',o.total_cents,'replayed',true); end if;
+ if p_source='web' then
+ insert into private.order_limits as lim(key,window_start,hits) values(p_rate_key,now(),1)
+ on conflict(key) do update set hits=case when lim.window_start<now()-interval '1 hour' then 1 else lim.hits+1 end,window_start=case when lim.window_start<now()-interval '1 hour' then now() else lim.window_start end returning lim.hits into hit_count;
+ if hit_count>30 then raise exception 'rate_limit'; end if;
+ end if;
+ for l in select value from jsonb_array_elements(p_lines) loop
+ if coalesce((l->>'quantity')::integer,0) not between 1 and 20 then raise exception 'invalid_quantity'; end if;
+ select x.*,p.name,p.price_cents,p.active as published into v from public.product_variants x join public.products p on p.id=x.product_id where x.id=(l->>'variant_id')::uuid for share of x,p;
+ if not found or not v.active or not v.published then raise exception 'unavailable_variant'; end if;
+ subtotal:=subtotal+v.price_cents*(l->>'quantity')::integer;
+ end loop;
+ if nullif(trim(p_discount),'') is not null then select percent into pct from public.discounts where code=upper(trim(p_discount)) and active and(expires_at is null or expires_at>now()) for share; if not found then raise exception 'invalid_discount'; end if; end if;
+ reduction:=floor(subtotal::numeric*pct/100)::integer;
+ insert into public.orders(request_id,first_name,last_name,email,phone,notes,source,subtotal_cents,discount_code,discount_cents,total_cents) values(p_request_id,trim(p_customer->>'first_name'),trim(p_customer->>'last_name'),nullif(trim(p_customer->>'email'),''),nullif(trim(p_customer->>'phone'),''),coalesce(p_customer->>'notes',''),p_source,subtotal,nullif(upper(trim(p_discount)),''),reduction,subtotal-reduction) returning * into o;
+ insert into public.order_items(order_id,variant_id,product_name,model,size,color,quantity,unit_price_cents) select o.id,x.id,p.name,x.model,x.size,x.color,(j.value->>'quantity')::integer,p.price_cents from jsonb_array_elements(p_lines) j join public.product_variants x on x.id=(j.value->>'variant_id')::uuid join public.products p on p.id=x.product_id;
+ delete from private.order_limits where window_start<now()-interval '48 hours';
+ return jsonb_build_object('order_id',o.id,'order_number','004-'||lpad(o.sequence::text,5,'0'),'total_cents',o.total_cents,'replayed',false);
+end; $$;
+revoke all on function public.submit_order(uuid,jsonb,jsonb,text,text,text) from public,anon,authenticated;
+grant execute on function public.submit_order(uuid,jsonb,jsonb,text,text,text) to service_role;
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('product-images','product-images',true,5242880,array['image/jpeg','image/png','image/webp']);
+create policy images_insert on storage.objects for insert to authenticated with check(bucket_id='product-images' and(select private.is_admin()));
+create policy images_select on storage.objects for select to authenticated using(bucket_id='product-images' and(select private.is_admin()));
+create policy images_update on storage.objects for update to authenticated using(bucket_id='product-images' and(select private.is_admin())) with check(bucket_id='product-images' and(select private.is_admin()));
+commit;
